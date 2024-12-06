@@ -35,6 +35,26 @@ target_include_directories(glad PUBLIC vendor/glad/include)
 # Link GLAD to the main executable
 target_link_libraries(${PROJECT_NAME} PRIVATE glad)
 
+# Add ImGui as a static library
+add_library(imgui STATIC
+    vendor/imgui/imgui.cpp
+    vendor/imgui/imgui_draw.cpp
+    vendor/imgui/imgui_widgets.cpp
+    vendor/imgui/imgui_tables.cpp
+    vendor/imgui/backends/imgui_impl_glfw.cpp
+    vendor/imgui/backends/imgui_impl_opengl3.cpp
+)
+
+# Ensure ImGui has proper include directories
+target_include_directories(imgui PUBLIC
+    vendor/imgui
+    vendor/imgui/backends
+    vendor/glfw/include # Add GLFW include path here
+)
+
+# Link ImGui to the main executable
+target_link_libraries(${PROJECT_NAME} PRIVATE imgui)
+
 # Set platform-specific options
 if (WIN32)
     target_link_libraries(${PROJECT_NAME} PRIVATE opengl32)

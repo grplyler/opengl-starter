@@ -9,6 +9,7 @@ Made for the tutorial at learnopengl.com
 - glfw
 - glm (GL Math)
 - stb_image.h
+- ImGui (for UI)
 
 ## Getting Started
 
