@@ -8,9 +8,11 @@ Made for the tutorial at learnopengl.com
 ## Whats Included?
 
 - glfw
-- glm (GL Math)
-- stb_image.h
-- ImGui (for UI)
+- glad
+- glm (math library)
+- stb_image.h (image loading)
+- ImGui (UI)
+- Simple Shader Loader
 
 ## Getting Started
 
