@@ -3,6 +3,7 @@
 Just some essential boilerplate to get you going with opengl.
 Made for the tutorial at learnopengl.com
 
+![Screenshot](screenshots/mainwindow.png)
 
 ## Whats Included?
 
