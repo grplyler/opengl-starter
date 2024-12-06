@@ -37,4 +37,5 @@ If you see a red window, everythings working.
 
 ## Todo
 
-- [ ] Basic shader loader
+- [x] Basic shader loader
+- [ ] 3D Fly Camera
