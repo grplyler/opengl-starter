@@ -12,6 +12,7 @@
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
+#include <ImGuizmo.h>
 
 // Image Loading
 #define STB_IMAGE_IMPLEMENTATION
@@ -44,6 +45,15 @@ float lastY = SCR_HEIGHT / 2.0f;
 bool firstMouse = true;
 bool enableMouseMovement = true;
 
+
+bool useWindow = true;
+int gizmoCount = 1;
+float camDistance = 8.f;
+static ImGuizmo::OPERATION mCurrentGizmoOperation(ImGuizmo::TRANSLATE);
+static ImGuizmo::MODE mCurrentGizmoMode(ImGuizmo::WORLD);
+static bool useSnap(false);
+static float snap[3] = { 1.f, 1.f, 1.f };
+
 // timing
 float deltaTime = 0.0f;	// time between current frame and last frame
 float lastFrame = 0.0f;
@@ -59,6 +69,32 @@ glm::mat4 view = glm::lookAt(glm::vec3(0.0f, 0.0f, 3.0f),
 
 // Projection Matrix
 glm::mat4 projection = glm::perspective(glm::radians(60.0f), 800.0f / 600.0f, 0.1f, 100.0f);
+
+void TransformEnd()
+{
+   if (useWindow)
+   {
+      ImGui::End();
+   }
+   ImGui::PopStyleColor(1);
+}
+
+void EditTransform(float* cameraView, float* cameraProjection, float* matrix)
+{
+    ImGuiIO& io = ImGui::GetIO();
+    float windowWidth = (float)ImGui::GetWindowWidth();
+    float windowHeight = (float)ImGui::GetWindowHeight();
+    if (!useWindow)
+    {
+       ImGuizmo::SetRect(0, 0, io.DisplaySize.x, io.DisplaySize.y);
+    }
+    else
+    {
+       ImGuizmo::SetRect(ImGui::GetWindowPos().x, ImGui::GetWindowPos().y, windowWidth, windowHeight);
+    }
+    ImGuizmo::Manipulate(cameraView, cameraProjection, mCurrentGizmoOperation, mCurrentGizmoMode, matrix, NULL, useSnap ? &snap[0] : NULL);
+}
+
 
 
 int main()
@@ -87,7 +123,7 @@ int main()
         return -1;
     }
 
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    // glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
     glfwMakeContextCurrent(window);
@@ -106,6 +142,7 @@ int main()
     ImGui::StyleColorsDark();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 330");
+
 
 
     // Configure OpenGL
@@ -265,10 +302,26 @@ int main()
         ImGui::ColorEdit3("Sphere Color", (float *)&sphereColor);
         ImGui::SliderFloat3("Light Direction", (float *)&lightDirection, -1.0f, 1.0f);
         ImGui::SliderFloat("Specular Strength", &specularStrength, 0.0f, 20.0f);
-        ImGui::End();
+    
+
+        // TransformStart(glm::value_ptr(view), glm::value_ptr(projection), glm::value_ptr(model));
+        ImGuizmo::SetRect(0, 0, 800, 600);
+        ImGuizmo::SetOrthographic(false);
+        ImGuizmo::BeginFrame();
+        ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(projection), mCurrentGizmoOperation, ImGuizmo::LOCAL, glm::value_ptr(model));
+        if (ImGuizmo::IsUsing())
+        {
+            enableMouseMovement = false;
+            std::cout << "Using gizmo" << std::endl;
+            // Update the model matrix
+            pointShader.setMat4("model", model);
+        } else {
+            // enableMouseMovement = true;
+        }
 
 
         // Render ImGui
+        ImGui::End();
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
@@ -285,6 +338,13 @@ int main()
 
 void processInput(GLFWwindow *window)
 {
+    if (ImGui::IsKeyPressed(ImGuiKey_T))
+        mCurrentGizmoOperation = ImGuizmo::TRANSLATE;
+    if (ImGui::IsKeyPressed(ImGuiKey_R))
+        mCurrentGizmoOperation = ImGuizmo::ROTATE;
+    if (ImGui::IsKeyPressed(ImGuiKey_S)) // r Key
+        mCurrentGizmoOperation = ImGuizmo::SCALE;
+        return;
     if (glfwGetKey(window, GLFW_KEY_X) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
@@ -314,8 +374,11 @@ void processInput(GLFWwindow *window)
         camera.ProcessKeyboard(DOWN, deltaTime);
 }
 
+
 void framebuffer_size_callback(GLFWwindow *window, int width, int height)
 {
+    SCR_WIDTH = width;
+    SCR_HEIGHT = height;
     glViewport(0, 0, width, height);
 }
 

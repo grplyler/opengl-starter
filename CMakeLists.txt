@@ -45,6 +45,23 @@ add_library(imgui STATIC
     vendor/imgui/backends/imgui_impl_opengl3.cpp
 )
 
+# Add ImGuizmo as a static library
+add_library(ImGuizmo STATIC
+    vendor/ImGuizmo/ImGuizmo.cpp
+)
+
+# Include directories for ImGuizmo
+target_include_directories(ImGuizmo PUBLIC
+    vendor/ImGuizmo
+    vendor/imgui
+)
+
+# Link ImGuizmo with ImGui
+target_link_libraries(ImGuizmo PRIVATE imgui)
+
+# Link ImGuizmo to the main project
+target_link_libraries(${PROJECT_NAME} PRIVATE ImGuizmo)
+
 # Ensure ImGui has proper include directories
 target_include_directories(imgui PUBLIC
     vendor/imgui
