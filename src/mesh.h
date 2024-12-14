@@ -63,7 +63,6 @@ public:
 
     // IO Stuff
     void to_obj(const std::string& filepath);
-    void to_objq(const std::string& filepath);
 
     static Mesh makeCube();
 
@@ -198,28 +197,6 @@ void Mesh::upload() {
 }
 
 void Mesh::to_obj(const std::string& filepath) {
-    std::ofstream file(filepath);
-    if (!file.is_open()) {
-        std::cerr << "Failed to open file: " << filepath << std::endl;
-        return;
-    }
-
-    for (const auto& vertex : vertices) {
-        file << "v " << vertex.position.x << " " << vertex.position.y << " " << vertex.position.z << std::endl;
-    }
-
-    for (const auto& face : faces) {
-        file << "f";
-        for (const auto& index : face.vertices) {
-            file << " " << (index + 1); // OBJ format is 1-based
-        }
-        file << std::endl;
-    }
-
-    file.close();
-}
-
-void Mesh::to_objq(const std::string& filepath) {
     std::ofstream file(filepath);
     if (!file.is_open()) {
         std::cerr << "Failed to open file: " << filepath << std::endl;

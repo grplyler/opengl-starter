@@ -32,9 +32,8 @@ int main() {
     Mesh mesh = Mesh::makeCube();
 
     mesh.gen_normals();
-    // mesh.catmull_clark_subdivide();
 
-    mesh.to_objq("cube.obj");
+    mesh.to_obj("cube.obj");
 
     return 0;
 }
