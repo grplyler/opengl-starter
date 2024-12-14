@@ -31,7 +31,8 @@
 int main() {
     Mesh mesh = Mesh::makeCube();
 
-    mesh.to_obj("cube.obj");
+    mesh.gen_normals();
+    mesh.to_objq("cube.obj");
 
     return 0;
 }
