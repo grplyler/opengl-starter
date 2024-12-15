@@ -32,6 +32,7 @@ struct RenderMesh {
     // Mesh generation methods
     static RenderMesh cube();
     static RenderMesh icosphere();
+    static RenderMesh uvsphere(int rings, int sectors);
     static RenderMesh plane();
     static RenderMesh cylinder();
 
@@ -332,6 +333,66 @@ RenderMesh RenderMesh::cube() {
     // Left
     mesh.add_face(4, 0, 3);
     mesh.add_face(4, 3, 7);
+
+    return mesh;
+}
+
+RenderMesh RenderMesh::uvsphere(int rings, int sectors) {
+    RenderMesh mesh;
+    mesh.has_shared_vertices = true;
+
+    float R = 1.0f;
+    float pi = glm::pi<float>();
+
+    // Add north pole vertex
+    mesh.add_vertex(0, R, 0, 0, 1, 0, 0.5f, 0.0f);
+
+    // Generate vertices for rings (excluding poles)
+    for (int i = 1; i < rings; i++) {
+        float theta = i * pi / rings;
+        float sinTheta = glm::sin(theta);
+        float cosTheta = glm::cos(theta);
+
+        for (int j = 0; j <= sectors; j++) {
+            float phi = j * 2 * pi / sectors;
+            float sinPhi = glm::sin(phi);
+            float cosPhi = glm::cos(phi);
+
+            float x = cosPhi * sinTheta;
+            float y = cosTheta;
+            float z = sinPhi * sinTheta;
+
+            mesh.add_vertex(x * R, y * R, z * R, x, y, z, (float)j / sectors, (float)i / rings);
+        }
+    }
+
+    // Add south pole vertex
+    mesh.add_vertex(0, -R, 0, 0, -1, 0, 0.5f, 1.0f);
+
+    // Create triangles for north pole (reversed winding)
+    int northPoleIndex = 0;
+    for (int j = 0; j < sectors; j++) {
+        mesh.add_face(northPoleIndex, j + 2, j + 1);
+    }
+
+    // Create triangles for rings (reversed winding)
+    for (int i = 1; i < rings - 1; i++) {
+        int rowStart = 1 + (i - 1) * (sectors + 1);
+        for (int j = 0; j < sectors; j++) {
+            int p0 = rowStart + j;
+            int p1 = p0 + sectors + 1;
+
+            mesh.add_face(p0, p0 + 1, p1);
+            mesh.add_face(p1, p0 + 1, p1 + 1);
+        }
+    }
+
+    // Create triangles for south pole (reversed winding)
+    int southPoleIndex = mesh.positions.size() - 1;
+    int lastRingStart = southPoleIndex - (sectors + 1);
+    for (int j = 0; j < sectors; j++) {
+        mesh.add_face(southPoleIndex, lastRingStart + j, lastRingStart + j + 1);
+    }
 
     return mesh;
 }

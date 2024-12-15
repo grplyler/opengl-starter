@@ -36,6 +36,10 @@ int main() {
     RenderMesh cube = RenderMesh::cube();
     mesh.compute_vertex_normals();
     cube.to_obj("cube_n.obj");
+
+    RenderMesh uvsphere = RenderMesh::uvsphere(100, 100);
+    mesh.compute_vertex_normals();
+    uvsphere.to_obj("uvsphere.obj");
     
     return 0;
 }
