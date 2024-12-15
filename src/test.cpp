@@ -29,11 +29,21 @@
 #include <sstream>
 
 int main() {
-    Mesh mesh = Mesh::makeCube();
+    RenderMesh mesh = RenderMesh::plane();
+    mesh.compute_vertex_normals();
+    mesh.to_obj("plane.obj");
 
-    mesh.gen_normals();
+    RenderMesh cube = RenderMesh::cube();
+    mesh.compute_vertex_normals();
+    cube.to_obj("cube_n.obj");
 
-    mesh.to_obj("cube.obj");
+    RenderMesh uvsphere = RenderMesh::uvsphere(10, 10);
+    mesh.compute_vertex_normals();
+    uvsphere.to_obj("uvsphere.obj");
 
+    RenderMesh cylinder = RenderMesh::cylinder(8);
+    mesh.compute_vertex_normals();
+    cylinder.to_obj("cylinder.obj");
+    
     return 0;
 }

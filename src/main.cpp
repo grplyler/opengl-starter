@@ -21,6 +21,7 @@
 // My Stuff
 #include "camera.h"
 #include "shader.h"
+#include "mesh.h"
 
 // Standard Library
 #include <iostream>
@@ -43,7 +44,9 @@ glm::vec3 cameraUp    = glm::vec3(0.0f, 1.0f,  0.0f);
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
 bool firstMouse = true;
-bool enableMouseMovement = true;
+static bool enableFlyCam = true;
+static bool drawNormals = false;
+static bool drawWireframe = false;
 
 
 bool useWindow = true;
@@ -60,7 +63,7 @@ float lastFrame = 0.0f;
 
 // Matrix Setup
 // Model Matrix
-glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(10.0f, 10.0f, 10.0f));
+glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, 1.0f, 1.0f));
 
 // View Matrix
 glm::mat4 view = glm::lookAt(glm::vec3(0.0f, 0.0f, 3.0f),
@@ -95,6 +98,9 @@ void EditTransform(float* cameraView, float* cameraProjection, float* matrix)
     ImGuizmo::Manipulate(cameraView, cameraProjection, mCurrentGizmoOperation, mCurrentGizmoMode, matrix, NULL, useSnap ? &snap[0] : NULL);
 }
 
+std::string vec3_to_string(const glm::vec3& vec) {
+    return "vec3(" + std::to_string(vec.x) + ", " + std::to_string(vec.y) + ", " + std::to_string(vec.z) + ")";
+}
 
 
 int main()
@@ -127,6 +133,9 @@ int main()
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
     glfwMakeContextCurrent(window);
+    
+    // Hide the cursor and capture it
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
     // Initialize GLAD
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
@@ -143,122 +152,79 @@ int main()
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 330");
 
-
-
     // Configure OpenGL
-    glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
-    glViewport(0, 0, 800, 600);
-    glEnable(GL_PROGRAM_POINT_SIZE);
+    glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+    glViewport(0, 0, 800*2, 600*2);
     glEnable(GL_DEPTH_TEST);
 
+
+       // positions of the point lights
+    glm::vec3 pointLightPositions[] = {
+        glm::vec3( 0.7f,  0.2f,  2.0f),
+        glm::vec3( 2.3f, -3.3f, -4.0f),
+        glm::vec3(-4.0f,  2.0f, -12.0f),
+        glm::vec3( 0.0f,  0.0f, -3.0f)
+    };
+
     // Load Shaders
-    Shader pointShader("point");
-    pointShader.setMat4("model", model);
-    pointShader.setMat4("view", view);
-    pointShader.setMat4("projection", projection);
-    pointShader.setFloat("point_size", 10.0f);
+    Shader lightingShader("multiple_lights");
+    Shader debugShader("debug");
 
-    // Set the sphere center and radius
-    glUniform3f(glGetUniformLocation(pointShader.ID, "sphere_center"), 0.0f, 0.0f, 0.0f);
-    glUniform1f(glGetUniformLocation(pointShader.ID, "sphere_radius"), 1.0f);
+    debugShader.use();
+    debugShader.setMat4("projection", projection);
+    debugShader.setMat4("view", view);
+    debugShader.setMat4("model", model);
+    debugShader.setVec3("lineColor", glm::vec3(1.0f, 0.0f, 0.0f));
 
-    // Set the light properties
-    glUniform3f(glGetUniformLocation(pointShader.ID, "light_direction"), 1.0f, -1.0f, -1.0f); // Example direction
-    glUniform3f(glGetUniformLocation(pointShader.ID, "light_color"), 1.0f, 1.0f, 1.0f);       // White light
-    glUniform3f(glGetUniformLocation(pointShader.ID, "sphere_color"), 0.8f, 0.2f, 0.2f);       // Red sphere
+    lightingShader.use();
+    lightingShader.setMat4("model", model);
+    lightingShader.setMat4("view", view);
+    lightingShader.setMat4("projection", projection);
 
+    // dir light
+    lightingShader.setVec3("dirLight.ambient", 1.0f, 0.0f, 0.0f);
+    lightingShader.setVec3("diffuse", 0.5f, 0.5f, 0.5f);
+    lightingShader.setVec3("specular", 1.0f, 1.0f, 1.0f);
+    lightingShader.setFloat("shininess", 32.0f);
+
+    lightingShader.setVec3("pointLights[0].position", pointLightPositions[0]);
+    lightingShader.setVec3("pointLights[0].ambient", 0.05f, 0.05f, 0.05f);
+    lightingShader.setVec3("pointLights[0].diffuse", 0.8f, 0.8f, 0.8f);
+    lightingShader.setVec3("pointLights[0].specular", 1.0f, 1.0f, 1.0f);
+    lightingShader.setFloat("pointLights[0].constant", 1.0f);
+    lightingShader.setFloat("pointLights[0].linear", 0.09f);
+    lightingShader.setFloat("pointLights[0].quadratic", 0.032f);
+    // point light 2
+    lightingShader.setVec3("pointLights[1].position", pointLightPositions[1]);
+    lightingShader.setVec3("pointLights[1].ambient", 0.05f, 0.05f, 0.05f);
+    lightingShader.setVec3("pointLights[1].diffuse", 0.8f, 0.8f, 0.8f);
+    lightingShader.setVec3("pointLights[1].specular", 1.0f, 1.0f, 1.0f);
+    lightingShader.setFloat("pointLights[1].constant", 1.0f);
+    lightingShader.setFloat("pointLights[1].linear", 0.09f);
+    lightingShader.setFloat("pointLights[1].quadratic", 0.032f);
+    // point light 3
+    lightingShader.setVec3("pointLights[2].position", pointLightPositions[2]);
+    lightingShader.setVec3("pointLights[2].ambient", 0.05f, 0.05f, 0.05f);
+    lightingShader.setVec3("pointLights[2].diffuse", 0.8f, 0.8f, 0.8f);
+    lightingShader.setVec3("pointLights[2].specular", 1.0f, 1.0f, 1.0f);
+    lightingShader.setFloat("pointLights[2].constant", 1.0f);
+    lightingShader.setFloat("pointLights[2].linear", 0.09f);
+    lightingShader.setFloat("pointLights[2].quadratic", 0.032f);
+    // point light 4
+    lightingShader.setVec3("pointLights[3].position", pointLightPositions[3]);
+    lightingShader.setVec3("pointLights[3].ambient", 0.05f, 0.05f, 0.05f);
+    lightingShader.setVec3("pointLights[3].diffuse", 0.8f, 0.8f, 0.8f);
+    lightingShader.setVec3("pointLights[3].specular", 1.0f, 1.0f, 1.0f);
+    lightingShader.setFloat("pointLights[3].constant", 1.0f);
+    lightingShader.setFloat("pointLights[3].linear", 0.09f);
+    lightingShader.setFloat("pointLights[3].quadratic", 0.032f);
+
+    // Load Mesh
+    RenderMesh mesh = RenderMesh::uvsphere(5, 6);
+    RenderMesh cylinder = RenderMesh::cylinder(10);
     
-
-    // Create a triangle
-    // (x, y, z, r, g, b)
-    // float vertices[] = {
-    //     -0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f,
-    //     0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f,
-    //     0.0f, 0.5f, 0.0f, 0.0f, 0.0f, 1.0f};
-
-    // unsigned int VBO, VAO;
-    // glGenVertexArrays(1, &VAO);
-    // glGenBuffers(1, &VBO);
-
-    // glBindVertexArray(VAO);
-
-    // glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    // glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-
-    // // Vertex positions
-    // glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)0);
-    // glEnableVertexAttribArray(0);
-
-    // // Vertex colors
-    // glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)(3 * sizeof(float)));
-    // glEnableVertexAttribArray(1);
-
-    // // Unbind the VAO
-    // glBindVertexArray(0);
-
-    // Create Points
-    unsigned int numberOfPoints = 10000;
-    float pointVertices[numberOfPoints * 3];
-    for (int i = 0; i < numberOfPoints; i++)
-    {
-        pointVertices[i * 3] = (rand() % 100) / 100.0f - 0.5f;
-        pointVertices[i * 3 + 1] = (rand() % 100) / 100.0f - 0.5f;
-        pointVertices[i * 3 + 2] = (rand() % 100) / 100.0f - 0.5f;
-    }
-
-
-    unsigned int pointVBO, pointVAO;
-    glGenVertexArrays(1, &pointVAO);
-    glGenBuffers(1, &pointVBO);
-
-    // Bind the VAO
-    glBindVertexArray(pointVAO);
-
-    // Bind the VBO
-    glBindBuffer(GL_ARRAY_BUFFER, pointVBO);
-
-    // Copy the vertices data to the VBO
-    glBufferData(GL_ARRAY_BUFFER, sizeof(pointVertices), pointVertices, GL_STATIC_DRAW);
-
-    // Set the vertex attributes
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
-
-    // Enable the vertex attributes
-    glEnableVertexAttribArray(0);
-
-    // Unbind the VAO
-    glBindVertexArray(0);
-    
-    // Variables
-    glm::vec4 clearColor(0.1f, 0.1f, 0.1f, 1.0f);
-    glm::vec3 sphereColor(0.8f, 0.2f, 0.2f);
-    glm::vec3 lightDirection(-1.0f, 0.7f, -1.0f);
-    glm::vec3 sphereCenter(0.0f, 0.0f, 0.0f);
-    glm::vec3 lightColor(1.0f, 1.0f, 1.0f);
-    float sphereRadius = 100.0f;
-    float specularStrength = 0.5f;
-
-    // Set the sphere center and radius
-    glUniform3f(glGetUniformLocation(pointShader.ID, "sphere_center"), 0.0f, 0.0f, 0.0f);
-    glUniform1f(glGetUniformLocation(pointShader.ID, "sphere_radius"), sphereRadius);
-
-    // Set the light properties
-    glUniform3f(glGetUniformLocation(pointShader.ID, "light_direction"), -1.0f, 0.7f, -1.0f); // Example direction
-    glUniform3f(glGetUniformLocation(pointShader.ID, "light_color"), 1.0f, 1.0f, 1.0f);       // White light
-    glUniform3f(glGetUniformLocation(pointShader.ID, "sphere_color"), 0.8f, 0.2f, 0.2f);       // Red sphere
-
-
-    // uniform vec3 sphere_center;   // Center of the sphere
-    // uniform float sphere_radius;  // Radius of the sphere
-    // uniform vec3 light_direction; // Direction of the light (normalized)
-    // uniform vec3 light_color;     // Color of the light (e.g., white: vec3(1.0, 1.0, 1.0))
-    // uniform vec3 sphere_color;    // Base color of the sphere
-
-    // pointShader.setVec3("sphere_color", sphereColor.x, sphereColor.y, sphereColor.z);
-    // pointShader.setFloat("sphere_radius", sphereRadius);
-    // pointShader.setVec3("light_direction", lightDirection.x, lightDirection.y, lightDirection.z);
-    // pointShader.setVec3("sphere_center", sphereCenter.x, sphereCenter.y, sphereCenter.z);
-    // pointShader.setVec3("light_color", lightColor.x, lightColor.y, lightColor.z);
+    cylinder.upload();
+    mesh.upload();
 
     // Main loop
     while (!glfwWindowShouldClose(window))
@@ -272,23 +238,46 @@ int main()
 
         // camera/view transformation
         glm::mat4 view = camera.GetViewMatrix();
-        pointShader.setMat4("view", view);
 
         // Clear the screen
-        glClearColor(clearColor.r, clearColor.g, clearColor.b, clearColor.a);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // Render the Points
-        pointShader.use();
-        pointShader.setFloat("sphere_radius", sphereRadius);
-        pointShader.setVec3("light_direction", lightDirection.x, lightDirection.y, lightDirection.z);
-        pointShader.setVec3("light_color", 1.0f, 1.0f, 1.0f); // White light
-        pointShader.setVec3("sphere_color", sphereColor.x, sphereColor.y, sphereColor.z);
-        pointShader.setVec3("view_position", camera.Position.x, camera.Position.y, camera.Position.z);
-        pointShader.setFloat("specular_strength", specularStrength);
+        // directional light
+        lightingShader.use();
+        lightingShader.setMat4("view", view);
+        lightingShader.setVec3("viewPos", camera.Position.x, camera.Position.y, camera.Position.z);
+        lightingShader.setVec3("dirLight.direction", -0.2f, -1.0f, -0.3f);
+        lightingShader.setVec3("dirLight.ambient", 0.1f, 0.1f, 0.1f);
+        lightingShader.setVec3("dirLight.diffuse", 0.4f, 0.4f, 0.4f);
+        lightingShader.setVec3("dirLight.specular", 0.5f, 0.5f, 0.5f);
+        lightingShader.setVec3("material.ambient", 1.0f, 1.0f, 1.0f);
+        lightingShader.setVec3("material.diffuse", 1.0f, 1.0f, 1.0f);
+        lightingShader.setVec3("material.specular", 0.5f, 0.5f, 0.5f);
+        lightingShader.setFloat("material.shininess", 128.0f);
 
-        glBindVertexArray(pointVAO);
-        glDrawArrays(GL_POINTS, 0, numberOfPoints);
+        // Render Mesh
+        mesh.draw();
+        // cylinder.draw();
+
+        // Render Normal Visualization
+        if(drawNormals)
+        {
+            debugShader.use();
+            debugShader.setMat4("view", view);
+            debugShader.setVec3("lineColor", glm::vec3(1.0f, 0.0f, 0.0f));
+            mesh.draw_normals(1.0f, 0.5f);
+            // cylinder.draw_normals(1.0f, 0.5f);
+        }
+
+        // Render Wireframe
+        if (drawWireframe)
+        {
+            debugShader.use();
+            debugShader.setMat4("view", view);
+            debugShader.setVec3("lineColor", glm::vec3(0.0f, 1.0f, 0.0f));
+            mesh.draw_wireframe(1.0f);
+            // cylinder.draw_wireframe(1.0f);
+        }
 
         // Start ImGui frame
         ImGui_ImplOpenGL3_NewFrame();
@@ -297,28 +286,8 @@ int main()
 
         // Create ImGui window
         ImGui::Begin("Controls");
-        ImGui::ColorEdit3("Clear Color", (float *)&clearColor);
-        ImGui::SliderFloat("Sphere Radius", (float *)&sphereRadius, 0.0f, 20.0f);
-        ImGui::ColorEdit3("Sphere Color", (float *)&sphereColor);
-        ImGui::SliderFloat3("Light Direction", (float *)&lightDirection, -1.0f, 1.0f);
-        ImGui::SliderFloat("Specular Strength", &specularStrength, 0.0f, 20.0f);
-    
-
-        // TransformStart(glm::value_ptr(view), glm::value_ptr(projection), glm::value_ptr(model));
-        ImGuizmo::SetRect(0, 0, 800, 600);
-        ImGuizmo::SetOrthographic(false);
-        ImGuizmo::BeginFrame();
-        ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(projection), mCurrentGizmoOperation, ImGuizmo::LOCAL, glm::value_ptr(model));
-        if (ImGuizmo::IsUsing())
-        {
-            enableMouseMovement = false;
-            std::cout << "Using gizmo" << std::endl;
-            // Update the model matrix
-            pointShader.setMat4("model", model);
-        } else {
-            // enableMouseMovement = true;
-        }
-
+        ImGui::Checkbox("Draw Normals", &drawNormals);
+        ImGui::Checkbox("Draw Wireframe", &drawWireframe);
 
         // Render ImGui
         ImGui::End();
@@ -338,28 +307,21 @@ int main()
 
 void processInput(GLFWwindow *window)
 {
-    if (ImGui::IsKeyPressed(ImGuiKey_T))
-        mCurrentGizmoOperation = ImGuizmo::TRANSLATE;
-    if (ImGui::IsKeyPressed(ImGuiKey_R))
-        mCurrentGizmoOperation = ImGuizmo::ROTATE;
-    if (ImGui::IsKeyPressed(ImGuiKey_S)) // r Key
-        mCurrentGizmoOperation = ImGuizmo::SCALE;
-        return;
-    if (glfwGetKey(window, GLFW_KEY_X) == GLFW_PRESS)
-        glfwSetWindowShouldClose(window, true);
-    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
-        // Show the mouse cursor
-        enableMouseMovement = !enableMouseMovement;
+    if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS && glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS)
+    {
+        enableFlyCam = !enableFlyCam;
 
-        if (enableMouseMovement)
+        if (enableFlyCam)
         {
             glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
         }
         else
         {
             glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-        }    
-    
+        }
+    }
+    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+        glfwSetWindowShouldClose(window, true);
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
         camera.ProcessKeyboard(FORWARD, deltaTime);
     if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
@@ -486,6 +448,6 @@ void mouse_callback(GLFWwindow* window, double xposIn, double yposIn)
     lastX = xpos;
     lastY = ypos;
 
-    if (enableMouseMovement)
+    if (enableFlyCam)
         camera.ProcessMouseMovement(xoffset, yoffset);
 }
