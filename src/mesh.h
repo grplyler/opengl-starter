@@ -12,6 +12,11 @@
 // Forward declaration
 struct ProcMesh;
 
+struct DebugMeshLines {
+    unsigned int VAO, VBO;
+    unsigned int line_count;
+};
+
 struct RenderMesh {
     std::vector<glm::vec3> positions;   // Vertex positions
     unsigned int num_vertices;          // Number of vertices
@@ -22,8 +27,12 @@ struct RenderMesh {
     bool has_shared_vertices = false;
     bool has_tex_coords = false;
     bool has_vertex_normals = false;
+    
+    // Debug Visualization
+    DebugMeshLines debug_normals = {0, 0, 0};
+    DebugMeshLines debug_wireframe = {0, 0, 0};
 
-
+    // Constructor
     void add_vertex(float x, float y, float z);
     void add_vertex(float x, float y, float z, float nx, float ny, float nz);
     void add_vertex(float x, float y, float z, float nx, float ny, float nz, float u, float v);
@@ -31,20 +40,23 @@ struct RenderMesh {
 
     // Mesh generation methods
     static RenderMesh cube();
-    static RenderMesh icosphere();
     static RenderMesh uvsphere(int rings, int sectors);
     static RenderMesh plane();
-    static RenderMesh cylinder();
+    static RenderMesh cylinder(int sectors);
 
     // GPU methods
     void upload();
     void upload_elements();
     void draw();
+    void draw_normals(float line_width = 1.0f, float length = 0.1f);
+    void draw_wireframe(float line_width = 1.0f);
     std::vector<float> get_vertex_data(); // Interleaved vertex data
 
     // Mesh processing methods
     void compute_vertex_normals();
     void flip_faces();
+    void create_debug_normals(float length);
+    void create_debug_wireframe();
     ProcMesh to_procmesh();
 
     // Mesh IO
@@ -132,6 +144,88 @@ std::vector<float> RenderMesh::get_vertex_data() {
     return data;
 }
 
+void RenderMesh::create_debug_wireframe() {
+    std::cout << "Creating debug wireframe" << std::endl;
+    std::vector<float> lines;
+    for (size_t i = 0; i < indices.size(); i += 3) {
+        // Triangle vertices
+        glm::vec3 v0 = positions[indices[i]];
+        glm::vec3 v1 = positions[indices[i + 1]];
+        glm::vec3 v2 = positions[indices[i + 2]];
+
+        // Add lines for each edge
+        lines.push_back(v0.x);
+        lines.push_back(v0.y);
+        lines.push_back(v0.z);
+
+        lines.push_back(v1.x);
+        lines.push_back(v1.y);
+        lines.push_back(v1.z);
+
+        lines.push_back(v1.x);
+        lines.push_back(v1.y);
+        lines.push_back(v1.z);
+
+        lines.push_back(v2.x);
+        lines.push_back(v2.y);
+        lines.push_back(v2.z);
+
+        lines.push_back(v2.x);
+        lines.push_back(v2.y);
+        lines.push_back(v2.z);
+
+        lines.push_back(v0.x);
+        lines.push_back(v0.y);
+        lines.push_back(v0.z);
+    }
+
+    glGenVertexArrays(1, &debug_wireframe.VAO);
+    glGenBuffers(1, &debug_wireframe.VBO);
+
+    glBindVertexArray(debug_wireframe.VAO);
+    glBindBuffer(GL_ARRAY_BUFFER, debug_wireframe.VBO);
+    glBufferData(GL_ARRAY_BUFFER, lines.size() * sizeof(float), lines.data(), GL_STATIC_DRAW);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), 0);
+
+    debug_wireframe.line_count = lines.size() / 3; // 3 floats per line (2 vertices * 3 coords)
+    
+}
+
+void RenderMesh::create_debug_normals(float length) {
+    if (!has_vertex_normals) return;
+    
+    std::cout << "Creating debug normals" << std::endl;
+
+    std::vector<float> lines;
+    // For each vertex, create a line from position to position + normal * length
+    for (size_t i = 0; i < positions.size(); i++) {
+        // Start point of line
+        lines.push_back(positions[i].x);
+        lines.push_back(positions[i].y);
+        lines.push_back(positions[i].z);
+        
+        // End point of line
+        glm::vec3 end = positions[i] + normals[i] * length;
+        lines.push_back(end.x);
+        lines.push_back(end.y);
+        lines.push_back(end.z);
+    }
+    
+    glGenVertexArrays(1, &debug_normals.VAO);
+    glGenBuffers(1, &debug_normals.VBO);
+    
+    glBindVertexArray(debug_normals.VAO);
+    glBindBuffer(GL_ARRAY_BUFFER, debug_normals.VBO);
+    glBufferData(GL_ARRAY_BUFFER, lines.size() * sizeof(float), lines.data(), GL_STATIC_DRAW);
+    
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), 0);
+    
+    debug_normals.line_count = lines.size() / 6; // 6 floats per line (2 vertices * 3 coords)
+}
+
 void RenderMesh::compute_vertex_normals() {
     has_vertex_normals = true;
     
@@ -163,9 +257,44 @@ void RenderMesh::draw() {
     glBindVertexArray(0);
 }
 
-void RenderMesh::upload_elements() {
-    // For geometric with shared vertices
+void RenderMesh::draw_normals(float line_width, float length) {
+    // if (!has_vertex_normals) return;
 
+    // Query max line width
+    float max_line_width;
+    glGetFloatv(GL_ALIASED_LINE_WIDTH_RANGE, &max_line_width);
+
+
+    if (debug_normals.VAO == 0) {
+        std::cout << "Max supported line width: " << max_line_width << std::endl;
+        create_debug_normals(length);
+    }
+
+    float clamped_width = std::min(line_width, max_line_width);
+    
+    glLineWidth(clamped_width);
+    glBindVertexArray(debug_normals.VAO);
+    glDrawArrays(GL_LINES, 0, debug_normals.line_count * 2);
+    glLineWidth(1.0f);
+}
+
+void RenderMesh::draw_wireframe(float line_width)
+{
+    if (debug_wireframe.VAO == 0) {
+        create_debug_wireframe();
+    }
+
+    float max_line_width;
+    glGetFloatv(GL_ALIASED_LINE_WIDTH_RANGE, &max_line_width);
+    float clamped_width = std::min(line_width, max_line_width);
+
+    glLineWidth(clamped_width);
+    glBindVertexArray(debug_wireframe.VAO);
+    glDrawArrays(GL_LINES, 0, debug_wireframe.line_count * 2);
+    glLineWidth(1.0f);
+}
+
+void RenderMesh::upload_elements() {
     // Generate buffers
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
@@ -183,26 +312,35 @@ void RenderMesh::upload_elements() {
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
 
-    // Set vertex attribute pointers
-    // Position
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
+    // Calculate stride - base position (3) + optional normals (3) + optional tex coords (2)
+    int stride = 3; // Position always present
+    if (has_vertex_normals) stride += 3;
+    if (has_tex_coords) stride += 2;
+    stride *= sizeof(float);
 
-    // Normals
+    size_t offset = 0;
+
+    // Position attribute
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)offset);
+    glEnableVertexAttribArray(0);
+    offset += 3 * sizeof(float);
+
+    // Normal attribute
     if (has_vertex_normals) {
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void*)offset);
         glEnableVertexAttribArray(1);
+        offset += 3 * sizeof(float);
     }
 
-    // Tex Coords
+    // Texture coordinate attribute
     if (has_tex_coords) {
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)offset);
         glEnableVertexAttribArray(2);
     }
 
-
+    // Unbind VAO
+    glBindVertexArray(0);
 }
-
 
 void RenderMesh::upload() {
     upload_elements();
@@ -392,6 +530,70 @@ RenderMesh RenderMesh::uvsphere(int rings, int sectors) {
     int lastRingStart = southPoleIndex - (sectors + 1);
     for (int j = 0; j < sectors; j++) {
         mesh.add_face(southPoleIndex, lastRingStart + j, lastRingStart + j + 1);
+    }
+
+    return mesh;
+}
+
+RenderMesh RenderMesh::cylinder(int sectors) {
+    RenderMesh mesh;
+    mesh.has_shared_vertices = true;
+
+    float H = 1.0f;  // Height of 1.0
+    float R = 0.5f;  // Radius of 0.5 for diameter of 1.0
+    float pi = glm::pi<float>();
+
+    // Add center vertices for caps
+    mesh.add_vertex(0, H/2, 0, 0, 1, 0, 0.5f, 0.5f);    // Top center
+    mesh.add_vertex(0, -H/2, 0, 0, -1, 0, 0.5f, 0.5f);  // Bottom center
+
+    // Generate vertices for caps
+    for (int i = 0; i <= sectors; i++) {
+        float theta = i * 2 * pi / sectors;
+        float x = R * glm::cos(theta);
+        float z = R * glm::sin(theta);
+        float u = glm::cos(theta) * 0.5f + 0.5f;
+        float v = glm::sin(theta) * 0.5f + 0.5f;
+
+        // Top cap vertices
+        mesh.add_vertex(x, H/2, z, 0, 1, 0, u, v);
+        // Bottom cap vertices
+        mesh.add_vertex(x, -H/2, z, 0, -1, 0, u, v);
+    }
+
+    // Generate vertices for sides
+    for (int i = 0; i <= sectors; i++) {
+        float theta = i * 2 * pi / sectors;
+        float x = R * glm::cos(theta);
+        float z = R * glm::sin(theta);
+        float nx = glm::cos(theta);
+        float nz = glm::sin(theta);
+
+        mesh.add_vertex(x, H/2, z, nx, 0, nz, (float)i/sectors, 0.0f);
+        mesh.add_vertex(x, -H/2, z, nx, 0, nz, (float)i/sectors, 1.0f);
+    }
+
+    // Create top circle (reversed winding)
+    int topCenter = 0;
+    for (int i = 0; i < sectors; i++) {
+        int current = 2 + i * 2;
+        int next = 2 + (i + 1) * 2;
+        mesh.add_face(topCenter, next, current);
+    }
+
+    // Create bottom circle (reversed winding)
+    int bottomCenter = 1;
+    for (int i = 0; i < sectors; i++) {
+        int current = 3 + i * 2;
+        int next = 3 + (i + 1) * 2;
+        mesh.add_face(bottomCenter, current, next);
+    }
+
+    // Create sides (reversed winding)
+    int sideStart = 2 * (sectors + 1) + 2;
+    for (int i = 0; i < sectors; i++) {
+        mesh.add_face(sideStart + i * 2, sideStart + i * 2 + 3, sideStart + i * 2 + 1);
+        mesh.add_face(sideStart + i * 2, sideStart + i * 2 + 2, sideStart + i * 2 + 3);
     }
 
     return mesh;

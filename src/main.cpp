@@ -44,7 +44,9 @@ glm::vec3 cameraUp    = glm::vec3(0.0f, 1.0f,  0.0f);
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
 bool firstMouse = true;
-bool enableMouseMovement = true;
+static bool enableFlyCam = true;
+static bool drawNormals = false;
+static bool drawWireframe = false;
 
 
 bool useWindow = true;
@@ -150,21 +152,11 @@ int main()
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 330");
 
-
-
     // Configure OpenGL
     glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
     glViewport(0, 0, 800*2, 600*2);
-    // glEnable(GL_PROGRAM_POINT_SIZE);
     glEnable(GL_DEPTH_TEST);
 
-    // Draw in wireframe
-    // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-
-    // Enable double sided rendering
-    // glEnable(GL_CULL_FACE);
-    // glCullFace(GL_BACK);
-    // glFrontFace(GL_CCW);
 
        // positions of the point lights
     glm::vec3 pointLightPositions[] = {
@@ -176,7 +168,13 @@ int main()
 
     // Load Shaders
     Shader lightingShader("multiple_lights");
-    // Shader lightCubeShader("light_cube");
+    Shader debugShader("debug");
+
+    debugShader.use();
+    debugShader.setMat4("projection", projection);
+    debugShader.setMat4("view", view);
+    debugShader.setMat4("model", model);
+    debugShader.setVec3("lineColor", glm::vec3(1.0f, 0.0f, 0.0f));
 
     lightingShader.use();
     lightingShader.setMat4("model", model);
@@ -213,20 +211,20 @@ int main()
     lightingShader.setFloat("pointLights[2].linear", 0.09f);
     lightingShader.setFloat("pointLights[2].quadratic", 0.032f);
     // point light 4
-    // lightingShader.setVec3("pointLights[3].position", pointLightPositions[3]);
-    // lightingShader.setVec3("pointLights[3].ambient", 0.05f, 0.05f, 0.05f);
-    // lightingShader.setVec3("pointLights[3].diffuse", 0.8f, 0.8f, 0.8f);
-    // lightingShader.setVec3("pointLights[3].specular", 1.0f, 1.0f, 1.0f);
-    // lightingShader.setFloat("pointLights[3].constant", 1.0f);
-    // lightingShader.setFloat("pointLights[3].linear", 0.09f);
-    // lightingShader.setFloat("pointLights[3].quadratic", 0.032f);
+    lightingShader.setVec3("pointLights[3].position", pointLightPositions[3]);
+    lightingShader.setVec3("pointLights[3].ambient", 0.05f, 0.05f, 0.05f);
+    lightingShader.setVec3("pointLights[3].diffuse", 0.8f, 0.8f, 0.8f);
+    lightingShader.setVec3("pointLights[3].specular", 1.0f, 1.0f, 1.0f);
+    lightingShader.setFloat("pointLights[3].constant", 1.0f);
+    lightingShader.setFloat("pointLights[3].linear", 0.09f);
+    lightingShader.setFloat("pointLights[3].quadratic", 0.032f);
 
     // Load Mesh
-    RenderMesh mesh = RenderMesh::from_obj("cube.obj");
+    RenderMesh mesh = RenderMesh::uvsphere(5, 6);
+    RenderMesh cylinder = RenderMesh::cylinder(10);
+    
+    cylinder.upload();
     mesh.upload();
-    // ico.pipeify(0.1f, 0.05f);
-    // ico.gen_normals();
-    // ico.upload();
 
     // Main loop
     while (!glfwWindowShouldClose(window))
@@ -258,10 +256,28 @@ int main()
         lightingShader.setFloat("material.shininess", 128.0f);
 
         // Render Mesh
-        // auto ambient = lightingShader.getVec3("dirLight.ambient");
-        // std::cout << "Ambient Color: " << vec3_to_string(ambient) << std::endl;
-        glBindVertexArray(mesh.VAO);
-        glDrawElements(GL_TRIANGLES, mesh.indices.size(), GL_UNSIGNED_INT, 0);
+        mesh.draw();
+        // cylinder.draw();
+
+        // Render Normal Visualization
+        if(drawNormals)
+        {
+            debugShader.use();
+            debugShader.setMat4("view", view);
+            debugShader.setVec3("lineColor", glm::vec3(1.0f, 0.0f, 0.0f));
+            mesh.draw_normals(1.0f, 0.5f);
+            // cylinder.draw_normals(1.0f, 0.5f);
+        }
+
+        // Render Wireframe
+        if (drawWireframe)
+        {
+            debugShader.use();
+            debugShader.setMat4("view", view);
+            debugShader.setVec3("lineColor", glm::vec3(0.0f, 1.0f, 0.0f));
+            mesh.draw_wireframe(1.0f);
+            // cylinder.draw_wireframe(1.0f);
+        }
 
         // Start ImGui frame
         ImGui_ImplOpenGL3_NewFrame();
@@ -270,12 +286,8 @@ int main()
 
         // Create ImGui window
         ImGui::Begin("Controls");
-        // ImGui::ColorEdit3("Clear Color", (float *)&clearColor);
-        // ImGui::SliderFloat("Sphere Radius", (float *)&sphereRadius, 0.0f, 20.0f);
-        // ImGui::ColorEdit3("Sphere Color", (float *)&sphereColor);
-        // ImGui::SliderFloat3("Light Direction", (float *)&lightDirection, -1.0f, 1.0f);
-        // ImGui::SliderFloat("Specular Strength", &specularStrength, 0.0f, 20.0f);
-
+        ImGui::Checkbox("Draw Normals", &drawNormals);
+        ImGui::Checkbox("Draw Wireframe", &drawWireframe);
 
         // Render ImGui
         ImGui::End();
@@ -295,6 +307,19 @@ int main()
 
 void processInput(GLFWwindow *window)
 {
+    if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS && glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS)
+    {
+        enableFlyCam = !enableFlyCam;
+
+        if (enableFlyCam)
+        {
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+        }
+        else
+        {
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+        }
+    }
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
@@ -423,6 +448,6 @@ void mouse_callback(GLFWwindow* window, double xposIn, double yposIn)
     lastX = xpos;
     lastY = ypos;
 
-    if (enableMouseMovement)
+    if (enableFlyCam)
         camera.ProcessMouseMovement(xoffset, yoffset);
 }
