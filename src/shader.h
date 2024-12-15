@@ -107,6 +107,18 @@ public:
         glUseProgram(ID);
         glUniform3f(glGetUniformLocation(ID, name.c_str()), v0, v1, v2);
     }
+    void setVec3(const std::string &name, glm::vec3 vec) const
+    {
+        glUseProgram(ID);
+        glUniform3f(glGetUniformLocation(ID, name.c_str()), vec.x, vec.y, vec.z);
+    }
+    glm::vec3 getVec3(const std::string &name) const
+    {
+        glUseProgram(ID);
+        glm::vec3 vec;
+        glGetUniformfv(ID, glGetUniformLocation(ID, name.c_str()), glm::value_ptr(vec));
+        return vec;
+    }
     void setMat4(const std::string &name, glm::mat4 &matrix) const
     {   
         glUseProgram(ID);

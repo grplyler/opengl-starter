@@ -29,11 +29,13 @@
 #include <sstream>
 
 int main() {
-    Mesh mesh = Mesh::makeCube();
+    RenderMesh mesh = RenderMesh::plane();
+    mesh.compute_vertex_normals();
+    mesh.to_obj("plane.obj");
 
-    mesh.gen_normals();
-
-    mesh.to_obj("cube.obj");
-
+    RenderMesh cube = RenderMesh::cube();
+    mesh.compute_vertex_normals();
+    cube.to_obj("cube_n.obj");
+    
     return 0;
 }
