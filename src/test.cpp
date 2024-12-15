@@ -49,8 +49,8 @@ int main() {
     mesh.compute_vertex_normals();
     icosphere.to_obj("icosphere.obj");
 
-    ProcMesh pm = ProcMesh::from_rendermesh(icosphere);
-    pm.to_obj("icosphere_proc.obj");
+    // ProcMesh pm = ProcMesh::from_rendermesh(icosphere);
+    // pm.to_obj("icosphere_proc_sub1.obj");
     
     return 0;
 }
