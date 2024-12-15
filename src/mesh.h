@@ -41,6 +41,7 @@ struct RenderMesh {
     // Mesh generation methods
     static RenderMesh cube();
     static RenderMesh uvsphere(int rings, int sectors);
+    static RenderMesh icosphere(int subdivisions);
     static RenderMesh plane();
     static RenderMesh cylinder(int sectors);
 
@@ -64,32 +65,302 @@ struct RenderMesh {
     static RenderMesh from_obj(std::string filename);
 };
 
-
+namespace std {
+    template<>
+    struct hash<pair<int,int>> {
+        size_t operator()(const pair<int,int>& p) const {
+            return hash<int>()(p.first) ^ (hash<int>()(p.second) << 1);
+        }
+    };
+}
 
 struct ProcMesh {
-    struct HalfEdge {
-        int vertex_index;          // Start vertex index
-        int twin_index;            // Opposite half-edge index
-        int next_index;            // Next half-edge in the face
-        int face_index;            // Face this edge belongs to
-    };
-
-    struct Face {
-        int edge_index;            // One of the half-edges in the face
-    };
-
+    // Core vertex data
     struct Vertex {
-        glm::vec3 position;        // Vertex position
-        int edge_index;            // One of the half-edges originating from this vertex
+        glm::vec3 position;
+        glm::vec3 normal;
+        int edge;  // Index of one outgoing half-edge
     };
 
+    // Half-edge connectivity
+    struct HalfEdge {
+        int vertex;     // Target vertex
+        int pair;       // Opposite half-edge
+        int next;       // Next in face loop
+        int prev;       // Previous in face loop  
+        int face;       // Face this belongs to
+        int edge;       // Parent edge index
+    };
+
+    // Edge data
+    struct Edge {
+        int he1, he2;  // The two half-edges
+        glm::vec3 midpoint; // For subdivision
+    };
+
+    // Face data  
+    struct Face {
+        int edge;      // One half-edge in face
+        glm::vec3 normal;
+    };
+
+    // Main containers
     std::vector<Vertex> vertices;
-    std::vector<HalfEdge> half_edges;
+    std::vector<HalfEdge> halfedges;
+    std::vector<Edge> edges;
     std::vector<Face> faces;
 
-    // Method to compute adjacency or other mesh processing
+    // Helper maps
+    std::unordered_map<std::pair<int,int>, int> edge_map; // vertex pair -> edge index
+    std::unordered_map<int, std::vector<int>> vertex_faces; // vertex -> faces
+    std::unordered_map<int, std::vector<int>> vertex_edges; // vertex -> edges
+
+    // Processing methods
     void compute_adjacency();
+    void compute_vertex_normals();
+    void subdivide_loop();
+
+    // Construction methods
+    static ProcMesh from_rendermesh(const RenderMesh& render_mesh);
+    void add_vertex(const glm::vec3& pos);
+    void add_face(int v0, int v1, int v2);
+    void build_halfedge_structure();
+
+    // IO
+    void to_obj(std::string filename);
 };
+
+void ProcMesh::to_obj(std::string filename) {
+    std::ofstream file(filename);
+    if (!file) return;
+
+    // Write vertex positions
+    for (const auto& v : vertices) {
+        file << "v " << v.position.x << " " 
+                    << v.position.y << " " 
+                    << v.position.z << "\n";
+    }
+
+    // Write vertex normals
+    for (const auto& v : vertices) {
+        file << "vn " << v.normal.x << " " 
+                     << v.normal.y << " " 
+                     << v.normal.z << "\n";
+    }
+
+    // Write faces
+    for (size_t f = 0; f < faces.size(); f++) {
+        file << "f ";
+        HalfEdge* he = &halfedges[faces[f].edge];
+        do {
+            int v_idx = halfedges[he->prev].vertex + 1; // OBJ indices are 1-based
+            file << v_idx << "//" << v_idx << " ";
+            he = &halfedges[he->next];
+        } while (he != &halfedges[faces[f].edge]);
+        file << "\n";
+    }
+
+    file.close();
+    std::cout << "Wrote mesh to " << filename << std::endl;
+}
+
+void ProcMesh::compute_adjacency() {
+    // Clear existing maps
+    vertex_faces.clear();
+    vertex_edges.clear();
+    edge_map.clear();
+    
+    // Build vertex->face adjacency
+    for(size_t f = 0; f < faces.size(); f++) {
+        HalfEdge* he = &halfedges[faces[f].edge];
+        do {
+            int v = halfedges[he->prev].vertex;
+            vertex_faces[v].push_back(f);
+            
+            // Get edge vertices
+            int v1 = halfedges[he->prev].vertex;
+            int v2 = he->vertex;
+            
+            // Store edge mapping
+            auto edge_key = std::make_pair(std::min(v1,v2), std::max(v1,v2));
+            if(edge_map.find(edge_key) == edge_map.end()) {
+                edge_map[edge_key] = he->edge;
+                vertex_edges[v1].push_back(he->edge);
+                vertex_edges[v2].push_back(he->edge);
+            }
+            
+            he = &halfedges[he->next];
+        } while(he != &halfedges[faces[f].edge]);
+        
+        // Compute face normal
+        HalfEdge* he0 = he;
+        glm::vec3 v0 = vertices[halfedges[he0->prev].vertex].position;
+        glm::vec3 v1 = vertices[he0->vertex].position;
+        he0 = &halfedges[he0->next];
+        glm::vec3 v2 = vertices[he0->vertex].position;
+        faces[f].normal = glm::normalize(glm::cross(v1 - v0, v2 - v0));
+    }
+}
+
+void ProcMesh::add_face(int v0, int v1, int v2) {
+    // Create new face
+    Face f;
+    f.edge = halfedges.size();
+    faces.push_back(f);
+    
+    // Create three half-edges
+    for (int i = 0; i < 3; i++) {
+        HalfEdge he;
+        he.face = faces.size() - 1;
+        halfedges.push_back(he);
+    }
+    
+    // Setup connectivity
+    int base = halfedges.size() - 3;
+    halfedges[base].vertex = v1;     // Points to next vertex
+    halfedges[base+1].vertex = v2;
+    halfedges[base+2].vertex = v0;
+    
+    halfedges[base].next = base + 1;
+    halfedges[base+1].next = base + 2;
+    halfedges[base+2].next = base;
+    
+    halfedges[base].prev = base + 2;
+    halfedges[base+1].prev = base;
+    halfedges[base+2].prev = base + 1;
+}
+
+void ProcMesh::build_halfedge_structure() {
+    // Initialize maps
+    edge_map.clear();
+    vertex_faces.clear();
+    vertex_edges.clear();
+
+    // Find pairs and create edges
+    for (int i = 0; i < halfedges.size(); i++) {
+        HalfEdge& he = halfedges[i];
+        int v1 = halfedges[he.prev].vertex;
+        int v2 = he.vertex;
+
+        // Store vertex->face connection
+        vertex_faces[v1].push_back(he.face);
+
+        // Look for matching half-edge
+        for (int j = i + 1; j < halfedges.size(); j++) {
+            HalfEdge& candidate = halfedges[j];
+            int cv1 = halfedges[candidate.prev].vertex;
+            int cv2 = candidate.vertex;
+
+            if (v1 == cv2 && v2 == cv1) {
+                // Found matching pair
+                he.pair = j;
+                candidate.pair = i;
+
+                // Create new edge
+                Edge e;
+                e.he1 = i;
+                e.he2 = j;
+                edges.push_back(e);
+
+                // Update edge indices
+                he.edge = edges.size() - 1;
+                candidate.edge = edges.size() - 1;
+
+                // Store in edge map
+                edge_map[{std::min(v1,v2), std::max(v1,v2)}] = edges.size() - 1;
+                
+                // Store vertex->edge connections
+                vertex_edges[v1].push_back(edges.size() - 1);
+                vertex_edges[v2].push_back(edges.size() - 1);
+                break;
+            }
+        }
+    }
+
+    // Update vertex outgoing edges
+    for (int i = 0; i < vertices.size(); i++) {
+        if (!vertex_edges[i].empty()) {
+            vertices[i].edge = halfedges[edges[vertex_edges[i][0]].he1].pair;
+        }
+    }
+}
+
+ProcMesh ProcMesh::from_rendermesh(const RenderMesh& render_mesh) {
+    ProcMesh proc_mesh;
+    
+    // Transfer vertices
+    for (const auto& pos : render_mesh.positions) {
+        proc_mesh.add_vertex(pos);
+    }
+    
+    // Create faces and initial topology
+    for (size_t i = 0; i < render_mesh.indices.size(); i += 3) {
+        proc_mesh.add_face(
+            render_mesh.indices[i],
+            render_mesh.indices[i + 1],
+            render_mesh.indices[i + 2]
+        );
+    }
+    
+    // Build complete topology
+    proc_mesh.build_halfedge_structure();
+    proc_mesh.compute_adjacency();
+    proc_mesh.compute_vertex_normals();
+    
+    return proc_mesh;
+}
+
+void ProcMesh::compute_vertex_normals() {
+    // Reset normals
+    for (auto& vertex : vertices) {
+        vertex.normal = glm::vec3(0.0f);
+    }
+
+    // Accumulate face normals
+    for (size_t i = 0; i < vertices.size(); i++) {
+        const auto& adj_faces = vertex_faces[i];
+        
+        for (int face_idx : adj_faces) {
+            const Face& face = faces[face_idx];
+            
+            // Get vertices of face
+            HalfEdge* he = &halfedges[face.edge];
+            glm::vec3 v0 = vertices[he->vertex].position;
+            he = &halfedges[he->next];
+            glm::vec3 v1 = vertices[he->vertex].position;
+            he = &halfedges[he->next];
+            glm::vec3 v2 = vertices[he->vertex].position;
+
+            // Compute face angle at vertex
+            glm::vec3 e1, e2;
+            if (he->vertex == i) {
+                e1 = v1 - v2;
+                e2 = v0 - v2;
+            } else if (halfedges[he->prev].vertex == i) {
+                e1 = v2 - v1;
+                e2 = v0 - v1;
+            } else {
+                e1 = v1 - v0;
+                e2 = v2 - v0;
+            }
+
+            float angle = acos(glm::dot(glm::normalize(e1), glm::normalize(e2)));
+            vertices[i].normal += face.normal * angle;
+        }
+
+        if (!adj_faces.empty()) {
+            vertices[i].normal = glm::normalize(vertices[i].normal);
+        }
+    }
+}
+
+void ProcMesh::add_vertex(const glm::vec3& pos) {
+    Vertex v;
+    v.position = pos;
+    v.normal = glm::vec3(0.0f);
+    v.edge = -1;
+    vertices.push_back(v);
+}
 
 void RenderMesh::add_face(unsigned int i0, unsigned int i1, unsigned int i2) {
     indices.push_back(i0);
@@ -471,6 +742,55 @@ RenderMesh RenderMesh::cube() {
     // Left
     mesh.add_face(4, 0, 3);
     mesh.add_face(4, 3, 7);
+
+    return mesh;
+}
+
+RenderMesh RenderMesh::icosphere(int subdivisions) {
+    RenderMesh mesh;
+    mesh.has_shared_vertices = true;
+
+    // Create icosahedron
+    float t = (1.0f + glm::sqrt(5.0f)) / 2.0f;
+
+    mesh.add_vertex(-1,  t,  0);
+    mesh.add_vertex( 1,  t,  0);
+    mesh.add_vertex(-1, -t,  0);
+    mesh.add_vertex( 1, -t,  0);
+
+    mesh.add_vertex( 0, -1,  t);
+    mesh.add_vertex( 0,  1,  t);
+    mesh.add_vertex( 0, -1, -t);
+    mesh.add_vertex( 0,  1, -t);
+
+    mesh.add_vertex( t,  0, -1);
+    mesh.add_vertex( t,  0,  1);
+    mesh.add_vertex(-t,  0, -1);
+    mesh.add_vertex(-t,  0,  1);
+
+    mesh.add_face(0, 11, 5);
+    mesh.add_face(0, 5, 1);
+    mesh.add_face(0, 1, 7);
+    mesh.add_face(0, 7, 10);
+    mesh.add_face(0, 10, 11);
+
+    mesh.add_face(1, 5, 9);
+    mesh.add_face(5, 11, 4);
+    mesh.add_face(11, 10, 2);
+    mesh.add_face(10, 7, 6);
+    mesh.add_face(7, 1, 8);
+
+    mesh.add_face(3, 9, 4);
+    mesh.add_face(3, 4, 2);
+    mesh.add_face(3, 2, 6);
+    mesh.add_face(3, 6, 8);
+    mesh.add_face(3, 8, 9);
+
+    mesh.add_face(4, 9, 5);
+    mesh.add_face(2, 4, 11);
+    mesh.add_face(6, 2, 10);
+    mesh.add_face(8, 6, 7);
+    mesh.add_face(9, 8, 1);
 
     return mesh;
 }

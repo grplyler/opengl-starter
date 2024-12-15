@@ -44,6 +44,13 @@ int main() {
     RenderMesh cylinder = RenderMesh::cylinder(8);
     mesh.compute_vertex_normals();
     cylinder.to_obj("cylinder.obj");
+
+    RenderMesh icosphere = RenderMesh::icosphere(2);
+    mesh.compute_vertex_normals();
+    icosphere.to_obj("icosphere.obj");
+
+    ProcMesh pm = ProcMesh::from_rendermesh(icosphere);
+    pm.to_obj("icosphere_proc.obj");
     
     return 0;
 }
