@@ -21,10 +21,10 @@ set(SHARED_INCLUDE_DIRS
 set(SHARED_LIBRARIES glfw glad ImGuizmo)
 
 # Add main executable
-add_executable(${PROJECT_NAME} src/main.cpp src/shader.h src/camera.h src/mesh.h src/light.h)
+add_executable(${PROJECT_NAME} src/main.cpp src/shader.h src/camera.h src/mesh.h src/hemesh.h  src/light.h)
 
 # Add test executable
-add_executable(test src/test.cpp src/shader.h src/camera.h src/mesh.h src/light.h)
+add_executable(test src/test.cpp src/shader.h src/camera.h src/mesh.h src/hemesh.h src/light.h)
 
 # Link shared libraries and imgui explicitly to both executables
 target_link_libraries(${PROJECT_NAME} PRIVATE ${SHARED_LIBRARIES} imgui)
