@@ -22,6 +22,7 @@
 #include "camera.h"
 #include "shader.h"
 #include "mesh.h"
+#include "hemesh.h"
 
 // Standard Library
 #include <iostream>
@@ -220,10 +221,16 @@ int main()
     lightingShader.setFloat("pointLights[3].quadratic", 0.032f);
 
     // Load Mesh
-    RenderMesh mesh = RenderMesh::uvsphere(5, 6);
-    RenderMesh cylinder = RenderMesh::cylinder(10);
+    // RenderMesh mesh = RenderMesh::uvsphere(5, 6);
+    // RenderMesh cylinder = RenderMesh::cylinder(10);
+
+    RenderMesh base_mesh = RenderMesh::cube();
+    HalfEdgeMesh hemesh = HalfEdgeMesh::from_rendermesh(base_mesh);
+
+    // Create pipe wireframe
+    RenderMesh mesh = create_pipe_wireframe(hemesh, 0.2, 6);
+    mesh.compute_vertex_normals();
     
-    cylinder.upload();
     mesh.upload();
 
     // Main loop

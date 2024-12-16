@@ -104,35 +104,11 @@ void test_ico_subdiv_loop() {
 }
 
 int main() {
-    // RenderMesh mesh = RenderMesh::plane();
-    // mesh.compute_vertex_normals();
-    // mesh.to_obj("plane.obj");
+    // Create your base mesh
+    RenderMesh mesh1 = RenderMesh::cube();
+    RenderMesh mesh2 = RenderMesh::cylinder(6);
 
-    // RenderMesh cube = RenderMesh::cube();
-    // mesh.compute_vertex_normals();
-    // cube.to_obj("cube_n.obj");
-
-    // RenderMesh uvsphere = RenderMesh::uvsphere(10, 10);
-    // mesh.compute_vertex_normals();
-    // uvsphere.to_obj("uvsphere.obj");
-
-    // RenderMesh cylinder = RenderMesh::cylinder(8);
-    // mesh.compute_vertex_normals();
-    // cylinder.to_obj("cylinder.obj");
-
-    // RenderMesh icosphere = RenderMesh::icosphere(2);
-    // mesh.compute_vertex_normals();
-    // icosphere.to_obj("icosphere.obj");
-
-    // ProcMesh pm = ProcMesh::from_rendermesh(icosphere);
-    // pm.to_obj("icosphere_proc_sub1.obj");
-
-    // test_cube_creation();
-    test_cube_rmesh_to_hemesh();
-    test_uvsphere_rmesh_to_hemesh();
-    test_icosphere_rmesh_to_hemesh();
-    test_ico_subdiv_loop();
-
-    
-    return 0;
+    mesh2.rotate_deg(glm::vec3(0, 0, 0), glm::vec3(1, 0, 0), 45);
+    mesh2.scale(glm::vec3(0, 0, 0), glm::vec3(1, 0, 0), 0.5);
+    mesh2.to_obj("rotated.obj");
 }

@@ -1,5 +1,6 @@
 #pragma once
 #include <vector>
+#include <set>
 #include <unordered_map>
 #include "mesh.h"
 
@@ -21,12 +22,12 @@ class HalfEdge
 {
 public:
     Vertex *vertex;
-    HalfEdge *opposite;
+    HalfEdge *pair;
     HalfEdge *next;
     Face *face;
 
     HalfEdge()
-        : vertex(nullptr), opposite(nullptr), next(nullptr), face(nullptr) {}
+        : vertex(nullptr), pair(nullptr), next(nullptr), face(nullptr) {}
 };
 
 class Face
@@ -39,12 +40,12 @@ public:
 
 class HalfEdgeMesh
 {
-private:
+public:
+
     std::vector<std::unique_ptr<Vertex>> vertices;
     std::vector<std::unique_ptr<HalfEdge>> halfedges;
     std::vector<std::unique_ptr<Face>> faces;
 
-public:
     Vertex *add_vertex(float x, float y, float z)
     {
         vertices.push_back(std::make_unique<Vertex>(x, y, z));
@@ -100,8 +101,75 @@ public:
 
     void connect_opposites(HalfEdge *he1, HalfEdge *he2)
     {
-        he1->opposite = he2;
-        he2->opposite = he1;
+        he1->pair = he2;
+        he2->pair = he1;
+    }
+
+    // Calculate edge length
+    float get_edge_length(HalfEdge *edge)
+    {
+        glm::vec3 v1(edge->vertex->x, edge->vertex->y, edge->vertex->z);
+        glm::vec3 v2(edge->next->vertex->x, edge->next->vertex->y, edge->next->vertex->z);
+        return glm::length(v2 - v1);
+    }
+
+    // Calculate face area
+    float get_face_area(Face *face)
+    {
+        HalfEdge *edge = face->halfedge;
+        glm::vec3 v1(edge->vertex->x, edge->vertex->y, edge->vertex->z);
+        glm::vec3 v2(edge->next->vertex->x, edge->next->vertex->y, edge->next->vertex->z);
+        glm::vec3 v3(edge->next->next->vertex->x, edge->next->next->vertex->y, edge->next->next->vertex->z);
+        return 0.5f * glm::length(glm::cross(v2 - v1, v3 - v1));
+    }
+
+    // Calculate vertex normal
+    glm::vec3 get_vertex_normal(Vertex *vertex)
+    {
+        glm::vec3 normal(0.0f);
+        auto faces = get_faces_around_vertex(vertex);
+        for (Face *face : faces)
+        {
+            normal += get_face_normal(face);
+        }
+        return glm::normalize(normal);
+    }
+
+    // Calculate face normal
+    glm::vec3 get_face_normal(Face *face)
+    {
+        HalfEdge *edge = face->halfedge;
+        glm::vec3 v1(edge->vertex->x, edge->vertex->y, edge->vertex->z);
+        glm::vec3 v2(edge->next->vertex->x, edge->next->vertex->y, edge->next->vertex->z);
+        glm::vec3 v3(edge->next->next->vertex->x, edge->next->next->vertex->y, edge->next->next->vertex->z);
+        return glm::normalize(glm::cross(v2 - v1, v3 - v1));
+    }
+
+    // Validate mesh integrity
+    bool validate_mesh() const
+    {
+        for (const auto &edge : halfedges)
+        {
+            if (!edge->next || !edge->face || !edge->vertex)
+                return false;
+            if (edge->pair && (!edge->pair->pair || edge->pair->pair != edge.get()))
+                return false;
+        }
+        return true;
+    }
+
+    // Get all faces adjacent to a vertex
+    std::vector<Face *> get_faces_around_vertex(Vertex *vertex)
+    {
+        std::vector<Face *> faces;
+        HalfEdge *start = vertex->outgoing_halfedge;
+        HalfEdge *current = start;
+        do
+        {
+            faces.push_back(current->face);
+            current = current->pair->next;
+        } while (current != start);
+        return faces;
     }
 
     std::vector<Vertex *> get_vertices_around_face(Face *face)
@@ -132,9 +200,9 @@ public:
         do
         {
             result.push_back(current->vertex);
-            if (!current->opposite)
+            if (!current->pair)
                 break;
-            current = current->opposite->next;
+            current = current->pair->next;
         } while (current != start);
 
         return result;
@@ -195,63 +263,75 @@ public:
     }
 
     // Add pair_hash struct at class scope
-    struct pair_hash {
+    struct pair_hash
+    {
         template <class T1, class T2>
-        std::size_t operator()(const std::pair<T1, T2>& p) const {
+        std::size_t operator()(const std::pair<T1, T2> &p) const
+        {
             auto h1 = std::hash<T1>{}(p.first);
             auto h2 = std::hash<T2>{}(p.second);
             return h1 ^ (h2 << 1);
         }
     };
 
-    HalfEdgeMesh subdivide_loop() {
+    HalfEdgeMesh subdivide_loop()
+    {
         HalfEdgeMesh new_mesh;
-        std::unordered_map<Vertex*, Vertex*> old_to_new_vertices;
-        std::unordered_map<std::pair<Vertex*, Vertex*>, Vertex*, pair_hash> edge_to_vertex;
+        std::unordered_map<Vertex *, Vertex *> old_to_new_vertices;
+        std::unordered_map<std::pair<Vertex *, Vertex *>, Vertex *, pair_hash> edge_to_vertex;
 
         // Step 1: Calculate new vertex positions (3/8 * old + 5/8 * neighbor average)
-        for (const auto& v : vertices) {
+        for (const auto &v : vertices)
+        {
             auto neighbors = get_vertices_around_vertex(v.get());
             int n = neighbors.size();
-            
-            float beta = (n == 3) ? 3.0f/16.0f : 3.0f/(8.0f * n);
+
+            float beta = (n == 3) ? 3.0f / 16.0f : 3.0f / (8.0f * n);
             glm::vec3 sum(0.0f);
-            for (auto neighbor : neighbors) {
+            for (auto neighbor : neighbors)
+            {
                 sum += glm::vec3(neighbor->x, neighbor->y, neighbor->z);
             }
-            
+
             glm::vec3 new_pos = glm::vec3(v->x, v->y, v->z) * (1.0f - n * beta) + sum * beta;
             old_to_new_vertices[v.get()] = new_mesh.add_vertex(new_pos.x, new_pos.y, new_pos.z);
         }
 
         // Step 2: Create edge vertices using the 3/8 - 3/8 - 1/8 - 1/8 rule
-        for (const auto& face : faces) {
-            HalfEdge* start = face->halfedge;
-            HalfEdge* current = start;
-            do {
-                Vertex* v0 = current->vertex;
-                Vertex* v1 = current->next->vertex;
-                auto edge = v0 < v1 ? 
-                    std::make_pair(v0, v1) : 
-                    std::make_pair(v1, v0);
+        for (const auto &face : faces)
+        {
+            HalfEdge *start = face->halfedge;
+            HalfEdge *current = start;
+            do
+            {
+                Vertex *v0 = current->vertex;
+                Vertex *v1 = current->next->vertex;
+                auto edge = v0 < v1 ? std::make_pair(v0, v1) : std::make_pair(v1, v0);
 
-                if (edge_to_vertex.find(edge) == edge_to_vertex.end()) {
+                if (edge_to_vertex.find(edge) == edge_to_vertex.end())
+                {
                     glm::vec3 edge_point;
-                    if (current->opposite) {
+                    if (current->pair)
+                    {
                         // Interior edge: use 3/8 - 3/8 - 1/8 - 1/8 rule
-                        edge_point = 
+                        edge_point =
                             glm::vec3(v0->x, v0->y, v0->z) * 0.375f +
                             glm::vec3(v1->x, v1->y, v1->z) * 0.375f +
                             glm::vec3(current->next->next->vertex->x,
-                                     current->next->next->vertex->y,
-                                     current->next->next->vertex->z) * 0.125f +
-                            glm::vec3(current->opposite->next->next->vertex->x,
-                                     current->opposite->next->next->vertex->y,
-                                     current->opposite->next->next->vertex->z) * 0.125f;
-                    } else {
+                                      current->next->next->vertex->y,
+                                      current->next->next->vertex->z) *
+                                0.125f +
+                            glm::vec3(current->pair->next->next->vertex->x,
+                                      current->pair->next->next->vertex->y,
+                                      current->pair->next->next->vertex->z) *
+                                0.125f;
+                    }
+                    else
+                    {
                         // Boundary edge: simple average
                         edge_point = (glm::vec3(v0->x, v0->y, v0->z) +
-                                    glm::vec3(v1->x, v1->y, v1->z)) * 0.5f;
+                                      glm::vec3(v1->x, v1->y, v1->z)) *
+                                     0.5f;
                     }
                     edge_to_vertex[edge] = new_mesh.add_vertex(
                         edge_point.x, edge_point.y, edge_point.z);
@@ -261,12 +341,13 @@ public:
         }
 
         // Step 3: Create new faces with correct winding
-        for (const auto& face : faces) {
-            HalfEdge* start = face->halfedge;
-            
-            Vertex* v0 = old_to_new_vertices[start->vertex];
-            Vertex* v1 = old_to_new_vertices[start->next->vertex];
-            Vertex* v2 = old_to_new_vertices[start->next->next->vertex];
+        for (const auto &face : faces)
+        {
+            HalfEdge *start = face->halfedge;
+
+            Vertex *v0 = old_to_new_vertices[start->vertex];
+            Vertex *v1 = old_to_new_vertices[start->next->vertex];
+            Vertex *v2 = old_to_new_vertices[start->next->next->vertex];
 
             auto e0 = edge_to_vertex[std::make_pair(
                 std::min(start->vertex, start->next->vertex),
@@ -288,3 +369,66 @@ public:
         return new_mesh;
     }
 };
+
+std::vector<std::pair<glm::vec3, glm::vec3>> get_unique_edges(HalfEdgeMesh& mesh) {
+    std::vector<std::pair<glm::vec3, glm::vec3>> edges;
+    std::set<std::pair<Vertex*, Vertex*>> visited;
+    
+    for (const auto& edge : mesh.halfedges) {
+        Vertex* v1 = edge->vertex;
+        Vertex* v2 = edge->next->vertex;
+        
+        // Create ordered pair to avoid duplicates
+        auto edge_pair = std::minmax(v1, v2);
+        if (visited.insert(edge_pair).second) {
+            glm::vec3 p1(v1->x, v1->y, v1->z);
+            glm::vec3 p2(v2->x, v2->y, v2->z);
+            edges.push_back({p1, p2});
+        }
+    }
+    return edges;
+}
+
+RenderMesh create_edge_cylinder(const glm::vec3& start, const glm::vec3& end, float radius, int segments) {
+
+    // // Calculate transformation
+    // glm::vec3 dir = end - start;
+    // float length = glm::length(dir);
+    // glm::vec3 mid = 0.5f * (start + end);
+    // RenderMesh cylinder = RenderMesh::cylinder(segments);
+
+    // // Move cylinder edge start.
+    // glm::mat4 transform;
+
+    // // Get direction we need to move the veritices to.
+    // glm::vec3 move_dir = glm::normalize(dir);
+
+    // transform = glm::translate
+
+
+    // return cylinder;
+}
+
+
+RenderMesh create_pipe_wireframe(HalfEdgeMesh& mesh, float radius = 0.02f, int segments = 8) {
+    RenderMesh result;
+    auto edges = get_unique_edges(mesh);
+    
+    for (const auto& edge : edges) {
+        RenderMesh pipe = create_edge_cylinder(edge.first, edge.second, radius, segments);
+        
+        // Merge pipe into result mesh
+        size_t base_idx = result.positions.size();
+        result.positions.insert(result.positions.end(), 
+                              pipe.positions.begin(), 
+                              pipe.positions.end());
+                              
+        for (size_t i = 0; i < pipe.indices.size(); i += 3) {
+            result.add_face(base_idx + pipe.indices[i],
+                          base_idx + pipe.indices[i+1],
+                          base_idx + pipe.indices[i+2]);
+        }
+    }
+    
+    return result;
+}

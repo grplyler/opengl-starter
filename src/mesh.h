@@ -56,6 +56,10 @@ struct RenderMesh {
     void flip_faces();
     void create_debug_normals(float length);
     void create_debug_wireframe();
+    void merge(RenderMesh& mesh);
+    void rotate_rad(glm::vec3 origin, glm::vec3 axis, float radians);
+    void rotate_deg(glm::vec3 origin, glm::vec3 axis, float degrees);
+    void scale(glm::vec3 origin, glm::vec3 axis, float value);
 
     // Mesh IO
     void to_obj(std::string filename);
@@ -69,6 +73,66 @@ namespace std {
             return hash<int>()(p.first) ^ (hash<int>()(p.second) << 1);
         }
     };
+}
+
+void RenderMesh::scale(glm::vec3 origin, glm::vec3 axis, float scale_factor) {
+   // Normalize the axis
+    axis = glm::normalize(axis);
+
+    for (auto& vertex : positions) {
+        // Translate the vertex to the origin
+        glm::vec3 translated_vertex = vertex - origin;
+
+        // Project the vertex onto the axis
+        float projection_length = glm::dot(translated_vertex, axis);
+        glm::vec3 projected_vector = projection_length * axis;
+
+        // Calculate the perpendicular component
+        glm::vec3 perpendicular_vector = translated_vertex - projected_vector;
+
+        // Scale the projected vector
+        glm::vec3 scaled_vector = projected_vector * scale_factor;
+
+        // Combine scaled and perpendicular components, then translate back
+        vertex = scaled_vector + perpendicular_vector + origin;
+    }
+}
+
+void RenderMesh::rotate_rad(glm::vec3 origin, glm::vec3 axis, float radians) {
+    // Normalize the axis
+    axis = glm::normalize(axis);
+    
+    // Create the rotation matrix
+    glm::mat4 rotation_matrix = glm::rotate(glm::mat4(1.0f), radians, axis);
+    
+    for (auto& vertex : positions) {
+        // Translate the vertex to the origin
+        glm::vec3 translated_vertex = vertex - origin;
+        
+        // Apply the rotation (convert to vec4 for matrix multiplication)
+        glm::vec4 rotated_vertex = rotation_matrix * glm::vec4(translated_vertex, 1.0f);
+        
+        // Translate back to the original position
+        vertex = glm::vec3(rotated_vertex) + origin;
+    }
+}
+
+void RenderMesh::rotate_deg(glm::vec3 origin, glm::vec3 axis, float degrees) {
+    rotate_rad(origin, axis, glm::radians(degrees));
+}
+
+void RenderMesh::merge(RenderMesh &mesh) {
+    // Merge pipe into result mesh
+    size_t base_idx = positions.size();
+    positions.insert(positions.end(), 
+                            mesh.positions.begin(), 
+                            mesh.positions.end());
+                            
+    for (size_t i = 0; i < mesh.indices.size(); i += 3) {
+        add_face(base_idx + mesh.indices[i],
+                        base_idx + mesh.indices[i+1],
+                        base_idx + mesh.indices[i+2]);
+    }
 }
 
 void RenderMesh::add_face(unsigned int i0, unsigned int i1, unsigned int i2) {
