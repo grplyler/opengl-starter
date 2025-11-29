@@ -35,8 +35,8 @@ void processInput(GLFWwindow *window);
 void mouse_callback(GLFWwindow* window, double xposIn, double yposIn);
 
 // camera
-unsigned int SCR_WIDTH = 800;
-unsigned int SCR_HEIGHT = 600;
+unsigned int SCR_WIDTH = 1280;
+unsigned int SCR_HEIGHT = 720;
 Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
 glm::vec3 cameraPos   = glm::vec3(0.0f, 0.0f,  3.0f);
 glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
@@ -47,6 +47,7 @@ bool firstMouse = true;
 static bool enableFlyCam = true;
 static bool drawNormals = false;
 static bool drawWireframe = false;
+static bool drawShaded = true;
 
 
 bool useWindow = true;
@@ -71,7 +72,7 @@ glm::mat4 view = glm::lookAt(glm::vec3(0.0f, 0.0f, 3.0f),
                     glm::vec3(0.0f, 1.0f, 0.0f));
 
 // Projection Matrix
-glm::mat4 projection = glm::perspective(glm::radians(60.0f), 800.0f / 600.0f, 0.1f, 100.0f);
+glm::mat4 projection = glm::perspective(glm::radians(60.0f), 1280.0f / 720.0f, 0.1f, 100.0f);
 
 void TransformEnd()
 {
@@ -121,7 +122,7 @@ int main()
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // For Mac compatibility
 #endif
 
-    GLFWwindow *window = glfwCreateWindow(800, 600, "OpenGL Starter", nullptr, nullptr);
+    GLFWwindow *window = glfwCreateWindow(1280, 720, "OpenGL Starter", nullptr, nullptr);
     if (!window)
     {
         std::cerr << "Failed to create GLFW window" << std::endl;
@@ -148,13 +149,116 @@ int main()
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO &io = ImGui::GetIO();
-    ImGui::StyleColorsDark();
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;           // Enable Docking
+    io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;         // Enable Multi-Viewport / Platform Windows
+    
+    // Custom style configuration
+    {
+        auto &style{ImGui::GetStyle()};
+        // Borders
+        style.WindowBorderSize = 3.0f;
+
+        // Rounding
+        style.FrameRounding = 3.0f;
+        style.PopupRounding = 3.0f;
+        style.ScrollbarRounding = 3.0f;
+        style.GrabRounding = 3.0f;
+
+        // Docking
+        style.DockingSeparatorSize = 3.0f;
+
+        // Helper to convert 0xAARRGGBB to ImVec4
+        auto ToRGBA = [](uint32_t argb) -> ImVec4 {
+            ImVec4 color{};
+            color.x = ((argb >> 16) & 0xFF) / 255.0f;
+            color.y = ((argb >> 8) & 0xFF) / 255.0f;
+            color.z = (argb & 0xFF) / 255.0f;
+            color.w = ((argb >> 24) & 0xFF) / 255.0f;
+            return color;
+        };
+
+        // Simple linear interpolation for ImVec4
+        auto Lerp = [](const ImVec4 &a, const ImVec4 &b, float t) -> ImVec4 {
+            return ImVec4{
+                a.x + (b.x - a.x) * t,
+                a.y + (b.y - a.y) * t,
+                a.z + (b.z - a.z) * t,
+                a.w + (b.w - a.w) * t};
+        };
+
+        auto *colors = style.Colors;
+        colors[ImGuiCol_Text] = ToRGBA(0xFFABB2BF);
+        colors[ImGuiCol_TextDisabled] = ToRGBA(0xFF565656);
+        colors[ImGuiCol_WindowBg] = ToRGBA(0xFF282C34);
+        colors[ImGuiCol_ChildBg] = ToRGBA(0xFF21252B);
+        colors[ImGuiCol_PopupBg] = ToRGBA(0xFF2E323A);
+        colors[ImGuiCol_Border] = ToRGBA(0xFF2E323A);
+        colors[ImGuiCol_BorderShadow] = ToRGBA(0x00000000);
+        colors[ImGuiCol_FrameBg] = colors[ImGuiCol_ChildBg];
+        colors[ImGuiCol_FrameBgHovered] = ToRGBA(0xFF484C52);
+        colors[ImGuiCol_FrameBgActive] = ToRGBA(0xFF54575D);
+        colors[ImGuiCol_TitleBg] = colors[ImGuiCol_WindowBg];
+        colors[ImGuiCol_TitleBgActive] = colors[ImGuiCol_FrameBgActive];
+        colors[ImGuiCol_TitleBgCollapsed] = ToRGBA(0x8221252B);
+        colors[ImGuiCol_MenuBarBg] = colors[ImGuiCol_ChildBg];
+        colors[ImGuiCol_ScrollbarBg] = colors[ImGuiCol_PopupBg];
+        colors[ImGuiCol_ScrollbarGrab] = ToRGBA(0xFF3E4249);
+        colors[ImGuiCol_ScrollbarGrabHovered] = ToRGBA(0xFF484C52);
+        colors[ImGuiCol_ScrollbarGrabActive] = ToRGBA(0xFF54575D);
+        colors[ImGuiCol_CheckMark] = colors[ImGuiCol_Text];
+        colors[ImGuiCol_SliderGrab] = ToRGBA(0xFF353941);
+        colors[ImGuiCol_SliderGrabActive] = ToRGBA(0xFF7A7A7A);
+        colors[ImGuiCol_Button] = colors[ImGuiCol_SliderGrab];
+        colors[ImGuiCol_ButtonHovered] = colors[ImGuiCol_FrameBgActive];
+        colors[ImGuiCol_ButtonActive] = colors[ImGuiCol_ScrollbarGrabActive];
+        colors[ImGuiCol_Header] = colors[ImGuiCol_ChildBg];
+        colors[ImGuiCol_HeaderHovered] = ToRGBA(0xFF353941);
+        colors[ImGuiCol_HeaderActive] = colors[ImGuiCol_FrameBgActive];
+        colors[ImGuiCol_Separator] = colors[ImGuiCol_FrameBgActive];
+        colors[ImGuiCol_SeparatorHovered] = ToRGBA(0xFF3E4452);
+        colors[ImGuiCol_SeparatorActive] = colors[ImGuiCol_SeparatorHovered];
+        colors[ImGuiCol_ResizeGrip] = colors[ImGuiCol_Separator];
+        colors[ImGuiCol_ResizeGripHovered] = colors[ImGuiCol_SeparatorHovered];
+        colors[ImGuiCol_ResizeGripActive] = colors[ImGuiCol_SeparatorActive];
+        colors[ImGuiCol_InputTextCursor] = ToRGBA(0xFF528BFF);
+        colors[ImGuiCol_TabHovered] = colors[ImGuiCol_HeaderHovered];
+        colors[ImGuiCol_Tab] = colors[ImGuiCol_FrameBgActive];
+        colors[ImGuiCol_TabSelected] = colors[ImGuiCol_HeaderHovered];
+        colors[ImGuiCol_TabSelectedOverline] = colors[ImGuiCol_HeaderActive];
+        colors[ImGuiCol_TabDimmed] = Lerp(colors[ImGuiCol_Tab], colors[ImGuiCol_TitleBg], 0.80f);
+        colors[ImGuiCol_TabDimmedSelected] = Lerp(colors[ImGuiCol_TabSelected], colors[ImGuiCol_TitleBg], 0.40f);
+        colors[ImGuiCol_TabDimmedSelectedOverline] = ImVec4{0.50f, 0.50f, 0.50f, 0.00f};
+        colors[ImGuiCol_DockingPreview] = colors[ImGuiCol_ChildBg];
+        colors[ImGuiCol_DockingEmptyBg] = colors[ImGuiCol_WindowBg];
+        colors[ImGuiCol_PlotLines] = ImVec4{0.61f, 0.61f, 0.61f, 1.00f};
+        colors[ImGuiCol_PlotLinesHovered] = ImVec4{1.00f, 0.43f, 0.35f, 1.00f};
+        colors[ImGuiCol_PlotHistogram] = ImVec4{0.90f, 0.70f, 0.00f, 1.00f};
+        colors[ImGuiCol_PlotHistogramHovered] = ImVec4{1.00f, 0.60f, 0.00f, 1.00f};
+        colors[ImGuiCol_TableHeaderBg] = colors[ImGuiCol_ChildBg];
+        colors[ImGuiCol_TableBorderStrong] = colors[ImGuiCol_SliderGrab];
+        colors[ImGuiCol_TableBorderLight] = colors[ImGuiCol_FrameBgActive];
+        colors[ImGuiCol_TableRowBg] = ImVec4{0.00f, 0.00f, 0.00f, 0.00f};
+        colors[ImGuiCol_TableRowBgAlt] = ImVec4{1.00f, 1.00f, 1.00f, 0.06f};
+        colors[ImGuiCol_TextLink] = ToRGBA(0xFF3F94CE);
+        colors[ImGuiCol_TextSelectedBg] = ToRGBA(0xFF243140);
+        colors[ImGuiCol_TreeLines] = colors[ImGuiCol_Text];
+        colors[ImGuiCol_DragDropTarget] = colors[ImGuiCol_Text];
+        colors[ImGuiCol_NavCursor] = colors[ImGuiCol_TextLink];
+        colors[ImGuiCol_NavWindowingHighlight] = colors[ImGuiCol_Text];
+        colors[ImGuiCol_NavWindowingDimBg] = ImVec4{0.80f, 0.80f, 0.80f, 0.20f};
+        colors[ImGuiCol_ModalWindowDimBg] = ToRGBA(0xC821252B);
+    }
+    
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 330");
 
     // Configure OpenGL
     glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-    glViewport(0, 0, 800*2, 600*2);
+    
+    // Get actual framebuffer size for proper viewport setup
+    int framebufferWidth, framebufferHeight;
+    glfwGetFramebufferSize(window, &framebufferWidth, &framebufferHeight);
+    glViewport(0, 0, framebufferWidth, framebufferHeight);
     glEnable(GL_DEPTH_TEST);
 
 
@@ -255,9 +359,20 @@ int main()
         lightingShader.setVec3("material.specular", 0.5f, 0.5f, 0.5f);
         lightingShader.setFloat("material.shininess", 128.0f);
 
-        // Render Mesh
-        mesh.draw();
-        // cylinder.draw();
+        // Render Mesh - shaded or wireframe
+        if (drawShaded)
+        {
+            mesh.draw();
+            // cylinder.draw();
+        }
+        else
+        {
+            debugShader.use();
+            debugShader.setMat4("view", view);
+            debugShader.setVec3("lineColor", glm::vec3(1.0f, 1.0f, 1.0f));
+            mesh.draw_wireframe(1.0f);
+            // cylinder.draw_wireframe(1.0f);
+        }
 
         // Render Normal Visualization
         if(drawNormals)
@@ -284,15 +399,57 @@ int main()
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
+        // Create dockspace
+        ImGuiViewport* viewport = ImGui::GetMainViewport();
+        ImGui::SetNextWindowPos(viewport->WorkPos);
+        ImGui::SetNextWindowSize(viewport->WorkSize);
+        ImGui::SetNextWindowViewport(viewport->ID);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+        ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar | 
+                                         ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | 
+                                         ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | 
+                                         ImGuiWindowFlags_NoNavFocus | ImGuiWindowFlags_NoBackground;
+        
+        ImGui::Begin("DockSpace", nullptr, window_flags);
+        ImGui::PopStyleVar(3);
+        
+        ImGuiID dockspace_id = ImGui::GetID("MyDockSpace");
+        ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_PassthruCentralNode);
+        ImGui::End();
+
         // Create ImGui window
-        ImGui::Begin("Controls");
+        ImGui::Begin("Settings");
+        ImGui::Checkbox("Draw Shaded", &drawShaded);
         ImGui::Checkbox("Draw Normals", &drawNormals);
         ImGui::Checkbox("Draw Wireframe", &drawWireframe);
+        
+        if (ImGui::Checkbox("Capture Cursor (Fly Cam)", &enableFlyCam))
+        {
+            if (enableFlyCam)
+            {
+                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+            }
+            else
+            {
+                glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+            }
+        }
 
         // Render ImGui
         ImGui::End();
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+        // Update and Render additional Platform Windows
+        if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+        {
+            GLFWwindow* backup_current_context = glfwGetCurrentContext();
+            ImGui::UpdatePlatformWindows();
+            ImGui::RenderPlatformWindowsDefault();
+            glfwMakeContextCurrent(backup_current_context);
+        }
 
         // Swap buffers and poll events
         glfwSwapBuffers(window);
@@ -321,6 +478,11 @@ void processInput(GLFWwindow *window)
         }
     }
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+    {
+        enableFlyCam = false;
+        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+    }
+    if (glfwGetKey(window, GLFW_KEY_X) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
         camera.ProcessKeyboard(FORWARD, deltaTime);
@@ -342,6 +504,9 @@ void framebuffer_size_callback(GLFWwindow *window, int width, int height)
     SCR_WIDTH = width;
     SCR_HEIGHT = height;
     glViewport(0, 0, width, height);
+    
+    // Update projection matrix with new aspect ratio
+    projection = glm::perspective(glm::radians(60.0f), (float)width / (float)height, 0.1f, 100.0f);
 }
 
 unsigned int LoadShader(std::string vertexPath, std::string fragmentPath)
